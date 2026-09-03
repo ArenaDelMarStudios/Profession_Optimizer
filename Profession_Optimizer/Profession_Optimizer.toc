@@ -1,9 +1,11 @@
 ## Interface: 120100
 ## Title: Profession Optimizer
-## Notes: Standalone profession tracking and optimization tool.
-## Author: ArenaDelMarStudios
+## Notes: Tracks profession gathering sessions and profitability.
+## Author: Your Name
 ## Version: 0.1.0
-## SavedVariables: Profession_OptimizerDB
+## SavedVariables: ProfessionOptimizerDB
 
 Database.lua
+Settings.lua
 Core.lua
+UI.lua
