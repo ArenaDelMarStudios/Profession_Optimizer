@@ -1,11 +1,14 @@
 ## Interface: 120100
 ## Title: Profession Optimizer
-## Notes: Tracks profession gathering sessions and profitability.
-## Author: Your Name
-## Version: 0.1.0
+## Notes: Tracks gathering sessions, Auction House market prices, and sales history.
+## Author: ArenaDelMarStudios
+## Version: 0.1.3
 ## SavedVariables: ProfessionOptimizerDB
 
 Database.lua
 Settings.lua
 Core.lua
+AuctionHouse.lua
+Sales.lua
+Tooltips.lua
 UI.lua

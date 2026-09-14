@@ -16,54 +16,34 @@ end
 
 
 local function GetElapsedTime()
-
     if not sessionStartTime then
         return 0
     end
 
-    return math.floor(
-        GetTime() - sessionStartTime
-    )
+    return math.floor(GetTime() - sessionStartTime)
 end
 
 
---------------------------------------------------
--- Money Formatting
---------------------------------------------------
-
-local function FormatMoney(copper)
-
+function PO_FormatMoney(copper)
     copper = tonumber(copper) or 0
     copper = math.floor(copper)
 
-    local gold =
-        math.floor(copper / 10000)
-
-    local silver =
-        math.floor((copper % 10000) / 100)
-
-    local copperRemaining =
-        copper % 100
+    local gold = math.floor(copper / 10000)
+    local silver = math.floor((copper % 10000) / 100)
+    local remainingCopper = copper % 100
 
     return string.format(
         "%dg %02ds %02dc",
         gold,
         silver,
-        copperRemaining
+        remainingCopper
     )
 end
 
 
---------------------------------------------------
--- Settings Helper
---------------------------------------------------
-
 local function GetSetting(key, fallback)
-
     if PO_GetSetting then
-
-        local value =
-            PO_GetSetting(key)
+        local value = PO_GetSetting(key)
 
         if value ~= nil then
             return value
@@ -75,53 +55,63 @@ end
 
 
 --------------------------------------------------
--- Session Value
+-- Session Calculations
 --------------------------------------------------
 
 local function CalculateSessionValue(session)
-
     local totalItems = 0
     local totalJunkItems = 0
     local totalJunkVendorValue = 0
 
-    if not session or
-       not session.resources then
-
-        return
-            totalItems,
-            totalJunkItems,
-            totalJunkVendorValue
+    if not session or not session.resources then
+        return totalItems, totalJunkItems, totalJunkVendorValue
     end
 
-    for _, resource in pairs(
-        session.resources
-    ) do
+    for _, resource in pairs(session.resources) do
+        local quantity = resource.quantity or 0
 
-        local quantity =
-            resource.quantity or 0
-
-        totalItems =
-            totalItems + quantity
+        totalItems = totalItems + quantity
 
         if resource.isJunk then
-
-            totalJunkItems =
-                totalJunkItems +
-                quantity
-
+            totalJunkItems = totalJunkItems + quantity
             totalJunkVendorValue =
                 totalJunkVendorValue +
-                (
-                    (resource.vendorPrice or 0) *
-                    quantity
-                )
+                ((resource.vendorPrice or 0) * quantity)
         end
     end
 
-    return
-        totalItems,
-        totalJunkItems,
-        totalJunkVendorValue
+    return totalItems, totalJunkItems, totalJunkVendorValue
+end
+
+
+local function FinalizeGatheringSession(session, elapsed)
+    if not session then
+        return
+    end
+
+    local totalItems, totalJunkItems, junkVendorValue =
+        CalculateSessionValue(session)
+
+    session.duration = elapsed or 0
+    session.endTime = time()
+
+    session.characterGUID =
+        session.characterGUID or UnitGUID("player")
+    session.character =
+        session.character or UnitName("player")
+    session.realm =
+        session.realm or GetRealmName()
+
+    session.totalItems = totalItems
+    session.totalJunkItems = totalJunkItems
+    session.junkVendorValue = junkVendorValue
+
+    if session.duration > 0 then
+        session.junkValuePerHour =
+            junkVendorValue / (session.duration / 3600)
+    else
+        session.junkValuePerHour = 0
+    end
 end
 
 
@@ -130,21 +120,14 @@ end
 --------------------------------------------------
 
 local function ClearChatInput()
-
     C_Timer.After(
         0,
         function()
-
-            local editBox =
-                ChatEdit_ChooseBoxForSend()
+            local editBox = ChatEdit_ChooseBoxForSend()
 
             if editBox then
-
                 editBox:SetText("")
-
-                ChatEdit_DeactivateChat(
-                    editBox
-                )
+                ChatEdit_DeactivateChat(editBox)
             end
         end
     )
@@ -155,12 +138,7 @@ end
 -- Item Classification
 --------------------------------------------------
 
-local function GetItemData(
-    itemID,
-    itemLink,
-    itemName
-)
-
+local function GetItemData(itemID, itemLink, itemName)
     local itemQuality
     local itemType
     local itemSubType
@@ -175,111 +153,57 @@ local function GetItemData(
     }
 
     if itemInfo then
+        itemName = itemName or itemInfo[1]
+        itemQuality = itemInfo[3]
+        itemType = itemInfo[6]
+        itemSubType = itemInfo[7]
+        vendorPrice = itemInfo[11]
+        classID = itemInfo[12]
+        subclassID = itemInfo[13]
+        isCraftingReagent = itemInfo[17]
 
-        itemName =
-            itemName or itemInfo[1]
-
-        --------------------------------------------------
-        -- ItemInfo return values
-        --
-        -- 3  = itemQuality
-        -- 6  = itemType
-        -- 7  = itemSubType
-        -- 11 = vendor sell price
-        -- 12 = classID
-        -- 13 = subclassID
-        -- 17 = isCraftingReagent
-        --------------------------------------------------
-
-        itemQuality =
-            itemInfo[3]
-
-        itemType =
-            itemInfo[6]
-
-        itemSubType =
-            itemInfo[7]
-
-        vendorPrice =
-            itemInfo[11]
-
-        classID =
-            itemInfo[12]
-
-        subclassID =
-            itemInfo[13]
-
-        isCraftingReagent =
-            itemInfo[17]
-
-        isJunk =
-            itemQuality ==
-            Enum.ItemQuality.Poor
+        if Enum and Enum.ItemQuality then
+            isJunk =
+                itemQuality == Enum.ItemQuality.Poor
+        else
+            isJunk = itemQuality == 0
+        end
     end
 
     return {
         itemID = itemID,
-
-        name =
-            itemName or
-            "Unknown Item",
-
-        link =
-            itemLink,
-
-        quality =
-            itemQuality,
-
-        isJunk =
-            isJunk or false,
-
-        itemType =
-            itemType or
-            "Unknown",
-
-        itemSubType =
-            itemSubType or
-            "Unknown",
-
-        classID =
-            classID,
-
-        subclassID =
-            subclassID,
-
-        isCraftingReagent =
-            isCraftingReagent or false,
-
-        vendorPrice =
-            vendorPrice or 0,
+        name = itemName or "Unknown Item",
+        link = itemLink,
+        quality = itemQuality,
+        isJunk = isJunk or false,
+        itemType = itemType or "Unknown",
+        itemSubType = itemSubType or "Unknown",
+        classID = classID,
+        subclassID = subclassID,
+        isCraftingReagent = isCraftingReagent or false,
+        vendorPrice = vendorPrice or 0,
     }
 end
 
 
 --------------------------------------------------
--- Start Session
+-- Start / Stop Session
 --------------------------------------------------
 
 local function StartGatheringSession()
-
-    local characterDB =
-        GetCharacterDB()
+    local characterDB = GetCharacterDB()
 
     if not characterDB then
-
         print(
             "Profession Optimizer: Character database unavailable."
         )
-
         return
     end
 
     if sessionActive then
-
         print(
             "Profession Optimizer: Gathering session already running."
         )
-
         return
     end
 
@@ -291,6 +215,9 @@ local function StartGatheringSession()
 
     characterDB.currentGatheringSession = {
         startTime = time(),
+        characterGUID = UnitGUID("player"),
+        character = UnitName("player"),
+        realm = GetRealmName(),
         resources = {},
     }
 
@@ -304,26 +231,17 @@ local function StartGatheringSession()
 end
 
 
---------------------------------------------------
--- Stop Session
---------------------------------------------------
-
 local function StopGatheringSession()
-
-    local characterDB =
-        GetCharacterDB()
+    local characterDB = GetCharacterDB()
 
     if not sessionActive then
-
         print(
             "Profession Optimizer: No gathering session is running."
         )
-
         return
     end
 
-    local elapsed =
-        GetElapsedTime()
+    local elapsed = GetElapsedTime()
 
     sessionActive = false
     sessionStartTime = nil
@@ -331,11 +249,10 @@ local function StopGatheringSession()
     if characterDB and
        characterDB.currentGatheringSession then
 
-        characterDB.currentGatheringSession.duration =
+        FinalizeGatheringSession(
+            characterDB.currentGatheringSession,
             elapsed
-
-        characterDB.currentGatheringSession.endTime =
-            time()
+        )
 
         characterDB.gatheringSessions =
             characterDB.gatheringSessions or {}
@@ -345,14 +262,12 @@ local function StopGatheringSession()
             characterDB.currentGatheringSession
         )
 
-        characterDB.currentGatheringSession =
-            nil
+        characterDB.currentGatheringSession = nil
     end
 
     print(
         "Profession Optimizer: Gathering session STOPPED."
     )
-
     print(
         "Profession Optimizer: Duration: " ..
         string.format(
@@ -368,10 +283,6 @@ local function StopGatheringSession()
 end
 
 
---------------------------------------------------
--- Public Session API
---------------------------------------------------
-
 function PO_IsSessionActive()
     return sessionActive
 end
@@ -380,72 +291,132 @@ end
 PO_StartGatheringSession =
     StartGatheringSession
 
-
 PO_StopGatheringSession =
     StopGatheringSession
 
 
 --------------------------------------------------
--- Session Snapshot
+-- Current Session Snapshot
 --------------------------------------------------
 
 function PO_GetSessionSnapshot()
-
     local snapshot = {
         active = sessionActive,
         elapsed = 0,
-
         totalItems = 0,
         totalJunkItems = 0,
-
         junkVendorValue = 0,
-
-        formattedJunkValue =
-            FormatMoney(0),
+        formattedJunkValue = PO_FormatMoney(0),
     }
 
     if not sessionActive then
         return snapshot
     end
 
-    local characterDB =
-        GetCharacterDB()
+    local characterDB = GetCharacterDB()
 
     if not characterDB or
        not characterDB.currentGatheringSession then
-
         return snapshot
     end
 
-    local totalItems
-    local totalJunkItems
-    local totalJunkVendorValue
-
-    totalItems,
-    totalJunkItems,
-    totalJunkVendorValue =
+    local totalItems, totalJunkItems, junkVendorValue =
         CalculateSessionValue(
             characterDB.currentGatheringSession
         )
 
-    snapshot.elapsed =
-        GetElapsedTime()
-
-    snapshot.totalItems =
-        totalItems
-
-    snapshot.totalJunkItems =
-        totalJunkItems
-
-    snapshot.junkVendorValue =
-        totalJunkVendorValue
-
+    snapshot.elapsed = GetElapsedTime()
+    snapshot.totalItems = totalItems
+    snapshot.totalJunkItems = totalJunkItems
+    snapshot.junkVendorValue = junkVendorValue
     snapshot.formattedJunkValue =
-        FormatMoney(
-            totalJunkVendorValue
-        )
+        PO_FormatMoney(junkVendorValue)
 
     return snapshot
+end
+
+
+--------------------------------------------------
+-- Gathering History API
+--------------------------------------------------
+
+function PO_GetGatheringSessions()
+    local characterDB = GetCharacterDB()
+
+    if not characterDB then
+        return {}
+    end
+
+    return characterDB.gatheringSessions or {}
+end
+
+
+function PO_GetGatheringSession(index)
+    local sessions = PO_GetGatheringSessions()
+
+    return sessions[index]
+end
+
+
+function PO_GetGatheringHistoryStats()
+    local sessions = PO_GetGatheringSessions()
+
+    local stats = {
+        sessions = #sessions,
+        totalItems = 0,
+        totalJunkItems = 0,
+        junkVendorValue = 0,
+    }
+
+    for _, session in ipairs(sessions) do
+        local totalItems = session.totalItems
+        local totalJunkItems = session.totalJunkItems
+        local junkVendorValue = session.junkVendorValue
+
+        if totalItems == nil or
+           totalJunkItems == nil or
+           junkVendorValue == nil then
+
+            totalItems,
+            totalJunkItems,
+            junkVendorValue =
+                CalculateSessionValue(session)
+        end
+
+        stats.totalItems =
+            stats.totalItems + (totalItems or 0)
+        stats.totalJunkItems =
+            stats.totalJunkItems + (totalJunkItems or 0)
+        stats.junkVendorValue =
+            stats.junkVendorValue + (junkVendorValue or 0)
+    end
+
+    return stats
+end
+
+
+--------------------------------------------------
+-- Account-Wide Completed Gathering Time
+--------------------------------------------------
+
+function PO_GetTotalGatheringDuration()
+    local DB = PO_GetDatabase and PO_GetDatabase()
+
+    if not DB then
+        return 0
+    end
+
+    local totalDuration = 0
+
+    for _, characterDB in pairs(DB.characters or {}) do
+        for _, session in ipairs(characterDB.gatheringSessions or {}) do
+            totalDuration =
+                totalDuration +
+                (tonumber(session.duration) or 0)
+        end
+    end
+
+    return totalDuration
 end
 
 
@@ -454,13 +425,11 @@ end
 --------------------------------------------------
 
 local function RecordLoot()
-
     if not sessionActive then
         return
     end
 
-    local characterDB =
-        GetCharacterDB()
+    local characterDB = GetCharacterDB()
 
     if not characterDB then
         return
@@ -480,7 +449,6 @@ local function RecordLoot()
         GetNumLootItems()
 
     for slot = 1, numLootItems do
-
         local lootSlotType =
             GetLootSlotType(slot)
 
@@ -490,13 +458,7 @@ local function RecordLoot()
             local itemLink =
                 GetLootSlotLink(slot)
 
-            local texture
-            local itemName
-            local quantity
-
-            texture,
-            itemName,
-            quantity =
+            local _, itemName, quantity =
                 GetLootSlotInfo(slot)
 
             if itemLink and
@@ -510,7 +472,6 @@ local function RecordLoot()
                     )
 
                 if itemID then
-
                     local itemData =
                         GetItemData(
                             itemID,
@@ -518,30 +479,23 @@ local function RecordLoot()
                             itemName
                         )
 
-                    --------------------------------------------------
-                    -- Create Item Record
-                    --------------------------------------------------
-
                     if not session.resources[itemID] then
-
                         session.resources[itemID] =
                             itemData
-
                         session.resources[itemID].quantity =
                             0
                     end
-
-                    --------------------------------------------------
-                    -- Add Quantity
-                    --------------------------------------------------
 
                     session.resources[itemID].quantity =
                         session.resources[itemID].quantity +
                         quantity
 
-                    --------------------------------------------------
-                    -- Display
-                    --------------------------------------------------
+                    if PO_RegisterGatheredItem then
+                        PO_RegisterGatheredItem(
+                            itemData,
+                            quantity
+                        )
+                    end
 
                     print(
                         "Profession Optimizer: +" ..
@@ -549,21 +503,6 @@ local function RecordLoot()
                         " " ..
                         itemName
                     )
-
-                    print(
-                        "  Type: " ..
-                        tostring(
-                            itemData.itemType
-                        ) ..
-                        " / " ..
-                        tostring(
-                            itemData.itemSubType
-                        )
-                    )
-
-                    --------------------------------------------------
-                    -- Junk Vendor Value
-                    --------------------------------------------------
 
                     if itemData.isJunk and
                        GetSetting(
@@ -573,20 +512,9 @@ local function RecordLoot()
 
                         print(
                             "  Junk Vendor Value: " ..
-                            FormatMoney(
+                            PO_FormatMoney(
                                 itemData.vendorPrice
                             )
-                        )
-                    end
-
-                    --------------------------------------------------
-                    -- Crafting Reagent
-                    --------------------------------------------------
-
-                    if itemData.isCraftingReagent then
-
-                        print(
-                            "  Crafting Reagent: YES"
                         )
                     end
                 end
@@ -601,22 +529,18 @@ end
 
 
 --------------------------------------------------
--- Session Status
+-- Status
 --------------------------------------------------
 
 local function ShowStatus()
-
     if not sessionActive then
-
         print(
             "Profession Optimizer: No gathering session running."
         )
-
         return
     end
 
-    local characterDB =
-        GetCharacterDB()
+    local characterDB = GetCharacterDB()
 
     if not characterDB then
         return
@@ -626,16 +550,13 @@ local function ShowStatus()
         characterDB.currentGatheringSession
 
     if not session then
-
         print(
             "Profession Optimizer: Session data unavailable."
         )
-
         return
     end
 
-    local elapsed =
-        GetElapsedTime()
+    local elapsed = GetElapsedTime()
 
     print(
         "Profession Optimizer Gathering Session: " ..
@@ -646,90 +567,40 @@ local function ShowStatus()
         )
     )
 
-    local resources =
-        session.resources or {}
-
-    local foundResources =
-        false
-
-    for _, resource in pairs(resources) do
-
+    for _, resource in pairs(session.resources or {}) do
         print(
             resource.name ..
             " x" ..
-            resource.quantity ..
+            (resource.quantity or 0) ..
             " [" ..
-            resource.itemType ..
+            tostring(resource.itemType or "Unknown") ..
             "]"
         )
-
-        foundResources = true
     end
 
-    if not foundResources then
+    local totalItems, totalJunkItems, junkVendorValue =
+        CalculateSessionValue(session)
 
-        print(
-            "Profession Optimizer: No items recorded yet."
-        )
-
-        return
-    end
-
-    --------------------------------------------------
-    -- Session Statistics
-    --------------------------------------------------
-
-    local totalItems
-    local totalJunkItems
-    local totalJunkVendorValue
-
-    totalItems,
-    totalJunkItems,
-    totalJunkVendorValue =
-        CalculateSessionValue(
-            session
-        )
-
-    print("")
     print("Session Statistics")
     print("------------------")
-
-    print(
-        "Total Items: " ..
-        totalItems
-    )
-
-    --------------------------------------------------
-    -- Junk Statistics
-    --------------------------------------------------
+    print("Total Items: " .. totalItems)
 
     if GetSetting(
         "trackJunkVendorValue",
         true
     ) then
-
-        print(
-            "Junk Items: " ..
-            totalJunkItems
-        )
-
+        print("Junk Items: " .. totalJunkItems)
         print(
             "Junk Vendor Value: " ..
-            FormatMoney(
-                totalJunkVendorValue
-            )
+            PO_FormatMoney(junkVendorValue)
         )
 
         if elapsed > 0 then
-
-            local junkValuePerHour =
-                totalJunkVendorValue /
-                (elapsed / 3600)
-
             print(
                 "Junk Vendor Gold/Hour: " ..
-                FormatMoney(
-                    junkValuePerHour
+                PO_FormatMoney(
+                    junkVendorValue /
+                    (elapsed / 3600)
                 )
             )
         end
@@ -744,10 +615,8 @@ end
 SLASH_PROFESSIONOPTIMIZER1 =
     "/po"
 
-
 SlashCmdList["PROFESSIONOPTIMIZER"] =
     function(msg)
-
         msg =
             strtrim(
                 string.lower(
@@ -756,43 +625,50 @@ SlashCmdList["PROFESSIONOPTIMIZER"] =
             )
 
         if msg == "prof" then
-
             if ShowProfessions then
                 ShowProfessions()
+            else
+                print(
+                    "Profession Optimizer: Profession display unavailable."
+                )
             end
 
         elseif msg == "start" then
-
             StartGatheringSession()
 
         elseif msg == "stop" then
-
             StopGatheringSession()
 
         elseif msg == "status" then
-
             ShowStatus()
 
-        else
+        elseif msg == "salescan" then
+            if PO_ScanSalesInbox then
+                PO_ScanSalesInbox(true)
+            else
+                print(
+                    "Profession Optimizer: Sales scanner unavailable."
+                )
+            end
 
+        else
             print(
                 "Profession Optimizer commands:"
             )
-
             print(
                 "/po prof - Show professions"
             )
-
             print(
                 "/po start - Start gathering session"
             )
-
             print(
                 "/po stop - Stop gathering session"
             )
-
             print(
                 "/po status - Show session status"
+            )
+            print(
+                "/po salescan - Scan current mailbox data for AH sales"
             )
         end
 
@@ -812,39 +688,33 @@ frame:RegisterEvent(
     "LOOT_OPENED"
 )
 
-
 frame:SetScript(
     "OnEvent",
     function(self, event, ...)
-
         if event == "PLAYER_LOGIN" then
-
             local characterDB =
                 GetCharacterDB()
 
             if characterDB then
-
                 characterDB.professions =
                     characterDB.professions or {}
-
                 characterDB.gatheringSessions =
                     characterDB.gatheringSessions or {}
 
-                --------------------------------------------------
-                -- Do not automatically resume an interrupted
-                -- gathering session yet.
-                --------------------------------------------------
-
+                -- Interrupted sessions are intentionally not resumed.
                 characterDB.currentGatheringSession =
                     nil
             end
 
+            if PO_RebuildGatheredItemIndex then
+                PO_RebuildGatheredItemIndex()
+            end
+
             print(
-                "Profession Optimizer: Loaded. Version 0.1.0"
+                "Profession Optimizer: Loaded. Version 0.1.5"
             )
 
         elseif event == "LOOT_OPENED" then
-
             RecordLoot()
         end
     end
